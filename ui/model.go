@@ -8,16 +8,27 @@ import (
 	"github.com/ekinertac/dtop/model"
 )
 
+type ViewMode int
+
+const (
+	ViewModeMain ViewMode = iota
+	ViewModeMenu
+	ViewModeLogs
+)
+
 type Model struct {
-	dockerClient *docker.Client
-	tree         *model.Tree
-	menuOpen     bool
-	menuItems    []MenuItem
-	menuSelected int
-	width        int
-	height       int
-	viewportTop  int // First visible line in the tree
-	err          error
+	dockerClient   *docker.Client
+	tree           *model.Tree
+	viewMode       ViewMode
+	menuItems      []MenuItem
+	menuSelected   int
+	logsContent    string
+	logsScroll     int
+	logsContainer  string
+	width          int
+	height         int
+	viewportTop    int // First visible line in the tree
+	err            error
 }
 
 type MenuItem struct {
@@ -29,16 +40,17 @@ type tickMsg time.Time
 
 func NewModel(dockerClient *docker.Client) Model {
 	return Model{
-		dockerClient: dockerClient,
-		tree:         &model.Tree{},
-		menuOpen:     false,
-		menuSelected: 0,
+		dockerClient:  dockerClient,
+		tree:          &model.Tree{},
+		viewMode:      ViewModeMain,
+		menuSelected:  0,
+		logsScroll:    0,
 	}
 }
 
 func (m Model) Init() tea.Cmd {
 	return tea.Batch(
-		m.refreshContainers(),
+		m.refreshContainersWithStats(false), // First load without stats (instant)
 		tickCmd(),
 	)
 }
@@ -50,8 +62,12 @@ func tickCmd() tea.Cmd {
 }
 
 func (m Model) refreshContainers() tea.Cmd {
+	return m.refreshContainersWithStats(true)
+}
+
+func (m Model) refreshContainersWithStats(includeStats bool) tea.Cmd {
 	return func() tea.Msg {
-		containers, err := m.dockerClient.ListContainers()
+		containers, err := m.dockerClient.ListContainersWithStats(includeStats)
 		if err != nil {
 			return errMsg{err}
 		}
@@ -60,6 +76,10 @@ func (m Model) refreshContainers() tea.Cmd {
 }
 
 type containersMsg []docker.ContainerInfo
+type logsMsg struct {
+	containerName string
+	content       string
+}
 type errMsg struct{ err error }
 
 func (e errMsg) Error() string { return e.err.Error() }
@@ -73,16 +93,35 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case containersMsg:
-		// Preserve selection across refresh
+		// Preserve selection and expand/collapse state across refresh
 		var selectedPath string
+		expandedProjects := make(map[string]bool)
+		
 		if m.tree != nil {
 			selectedNode := m.tree.GetSelected()
 			if selectedNode != nil {
 				selectedPath = m.tree.GetNodePath(selectedNode)
 			}
+			
+			// Save expand/collapse state for each project
+			for _, node := range m.tree.Flat {
+				if node.Type == model.NodeTypeProject {
+					expandedProjects[node.Name] = node.Expanded
+				}
+			}
 		}
 		
 		m.tree = model.BuildTree(msg)
+		
+		// Restore expand/collapse state
+		for _, node := range m.tree.Root.Children {
+			if node.Type == model.NodeTypeProject {
+				if expanded, exists := expandedProjects[node.Name]; exists {
+					node.Expanded = expanded
+				}
+			}
+		}
+		m.tree.UpdateFlatView()
 		
 		// Restore selection if possible
 		if selectedPath != "" {
@@ -100,6 +139,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			tickCmd(),
 		)
 
+	case logsMsg:
+		m.logsContainer = msg.containerName
+		m.logsContent = msg.content
+		m.logsScroll = 0
+		m.viewMode = ViewModeLogs
+		return m, nil
+
 	case errMsg:
 		m.err = msg.err
 		return m, nil
@@ -112,8 +158,39 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// Handle logs view
+	if m.viewMode == ViewModeLogs {
+		switch msg.String() {
+		case "esc", "q":
+			m.viewMode = ViewModeMain
+			m.logsContent = ""
+			m.logsScroll = 0
+		case "up", "k":
+			if m.logsScroll > 0 {
+				m.logsScroll--
+			}
+		case "down", "j":
+			m.logsScroll++
+		case "pgup":
+			m.logsScroll -= m.height - 5
+			if m.logsScroll < 0 {
+				m.logsScroll = 0
+			}
+		case "pgdown":
+			m.logsScroll += m.height - 5
+		case "home":
+			m.logsScroll = 0
+		case "g":
+			m.logsScroll = 0
+		case "G":
+			// Go to end
+			m.logsScroll = 999999 // Will be clamped in view
+		}
+		return m, nil
+	}
+
 	// Handle menu navigation
-	if m.menuOpen {
+	if m.viewMode == ViewModeMenu {
 		switch msg.String() {
 		case "up", "k":
 			if m.menuSelected > 0 {
@@ -127,11 +204,11 @@ func (m Model) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			// Execute selected action
 			if m.menuSelected < len(m.menuItems) {
 				cmd := m.menuItems[m.menuSelected].Action()
-				m.menuOpen = false
+				m.viewMode = ViewModeMain
 				return m, cmd
 			}
 		case "esc":
-			m.menuOpen = false
+			m.viewMode = ViewModeMain
 		}
 		return m, nil
 	}
@@ -213,7 +290,7 @@ func (m *Model) openMenu() {
 	}
 
 	m.menuSelected = 0
-	m.menuOpen = true
+	m.viewMode = ViewModeMenu
 
 	switch node.Type {
 	case model.NodeTypeProject:
@@ -263,7 +340,7 @@ func (m *Model) getProjectMenuItems(node *model.TreeNode) []MenuItem {
 			},
 		},
 		{
-			Label: "Stop & Remove All (keeps volumes)",
+			Label: "Down (stop & remove, keeps volumes)",
 			Action: func() tea.Cmd {
 				return func() tea.Msg {
 					// Run in background
@@ -340,7 +417,7 @@ func (m *Model) getContainerMenuItems(node *model.TreeNode) []MenuItem {
 			},
 		})
 		items = append(items, MenuItem{
-			Label: "Stop & Remove (keeps volumes)",
+			Label: "Remove (keeps volumes)",
 			Action: func() tea.Cmd {
 				return func() tea.Msg {
 					// Run in background
@@ -368,11 +445,23 @@ func (m *Model) getContainerMenuItems(node *model.TreeNode) []MenuItem {
 		})
 	}
 
-	// TODO: Add these when implemented
-	// items = append(items, MenuItem{
-	// 	Label:  "View Logs",
-	// 	Action: func() tea.Cmd { return nil },
-	// })
+	items = append(items, MenuItem{
+		Label: "Logs",
+		Action: func() tea.Cmd {
+			return func() tea.Msg {
+				logs, err := m.dockerClient.GetContainerLogs(containerID, 1000)
+				if err != nil {
+					return errMsg{err}
+				}
+				return logsMsg{
+					containerName: container.Name,
+					content:       logs,
+				}
+			}
+		},
+	})
+
+	// TODO: Add inspect when implemented
 	// items = append(items, MenuItem{
 	// 	Label:  "Inspect",
 	// 	Action: func() tea.Cmd { return nil },

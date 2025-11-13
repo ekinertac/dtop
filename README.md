@@ -104,17 +104,18 @@ NAME                                               STATUS                       
 ## Actions
 
 ### Project-level Actions
-- Restart All - Restart all containers in the project
-- Stop All - Stop all running containers (containers remain, ports held)
-- Stop & Remove All - Stop and remove all containers (frees ports, **keeps volumes**)
-- Start All - Start all stopped containers in the project
+- Restart All - Restart all containers (`docker compose restart`)
+- Stop All - Stop all running containers (`docker compose stop`)
+- Down - Stop and remove all containers (`docker compose down`, **keeps volumes**)
+- Start All - Start all stopped containers (`docker compose start`)
 
 ### Container-level Actions
-- Restart - Restart the container
-- Stop - Stop the container (keeps it, holds port)
-- Stop & Remove - Stop and remove the container (frees port, **keeps volumes**)
+- Restart - Restart the container (`docker restart`)
+- Stop - Stop the container (`docker stop`)
+- Remove - Remove the container (`docker rm`, **keeps volumes**)
+- Logs - View container logs (last 1000 lines, scrollable)
 
-**Note:** Removing containers is safe - your data in volumes is always preserved. To remove volumes, use `docker volume rm` or `docker compose down --volumes` from the terminal.
+**Note:** All operations preserve volumes by default. To remove volumes, use `docker volume rm` or `docker compose down --volumes` from the terminal.
 
 ## How It Works
 
@@ -200,8 +201,8 @@ fi
 ## Roadmap
 
 - [x] List mode for non-interactive use (`--list` / `-l`)
-- [ ] Real-time CPU/Memory statistics
-- [ ] Log viewer in split pane
+- [x] Real-time CPU/Memory statistics
+- [x] Log viewer with scrolling
 - [ ] Container inspect view
 - [ ] Exec into container
 - [ ] Filter/search functionality

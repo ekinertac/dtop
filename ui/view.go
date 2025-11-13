@@ -89,8 +89,11 @@ func (m Model) renderView() string {
 		return fmt.Sprintf("Error: %v\n", m.err)
 	}
 
-	// If menu is open, show menu instead of main view
-	if m.menuOpen {
+	// Render based on view mode
+	switch m.viewMode {
+	case ViewModeLogs:
+		return m.renderLogs()
+	case ViewModeMenu:
 		return m.renderMenu()
 	}
 
