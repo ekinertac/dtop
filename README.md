@@ -2,6 +2,8 @@
 
 A terminal UI tool for monitoring Docker containers, inspired by htop. Displays containers grouped by project with an interactive tree interface.
 
+![dtop screenshot](.github/assets/screenshot.png)
+
 ## Features
 
 - **Project Grouping**: Automatically groups containers by their name prefix (Docker Compose convention)
