@@ -21,7 +21,7 @@ func main() {
 
 	// Version flag
 	if *version {
-		fmt.Println("dtop v0.2.0")
+		fmt.Println("dtop v0.3.0")
 		fmt.Println("Docker container monitor - https://github.com/ekinertac/dtop")
 		return
 	}
