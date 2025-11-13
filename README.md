@@ -14,6 +14,7 @@ A terminal UI tool for monitoring Docker containers, inspired by htop. Displays 
 - **Viewport Scrolling**: Efficient handling of hundreds of containers with automatic scrolling
 - **Sticky Footer**: Help text always visible at bottom of screen
 - **Scroll Indicator**: Shows current position when content exceeds screen height
+- **List Mode**: Non-interactive output for scripts and CI/CD pipelines (`--list` / `-l`)
 
 ## Installation
 
@@ -47,8 +48,38 @@ go build -o dtop
 
 ## Usage
 
+### Interactive mode (default)
+
 ```bash
 dtop
+```
+
+Launches the full interactive TUI with real-time monitoring and keyboard navigation.
+
+### List mode (non-interactive)
+
+```bash
+dtop --list
+# or short form
+dtop -l
+```
+
+Lists current containers and exits immediately. Useful for:
+- Shell scripts and automation
+- CI/CD pipelines
+- Quick status checks in non-interactive environments
+- Logging/monitoring systems
+
+Example output:
+```
+dtop - Docker Container Monitor
+
+NAME                                               STATUS                         CPU %    MEM %    UPTIME
+------------------------------------------------------------------------------------------------------------------------
+▼ myproject (3)
+    myproject-web-1                                Up 2 hours                     0.0%     0.0%     02h 15m
+    myproject-db-1                                 Up 2 hours (healthy)           0.0%     0.0%     02h 15m
+    myproject-worker-1                             Up 2 hours                     0.0%     0.0%     02h 15m
 ```
 
 ## Keyboard Shortcuts
@@ -138,8 +169,37 @@ After pushing, others can install with:
 go install github.com/ekinertac/dtop@latest
 ```
 
+## Use Cases
+
+**Interactive monitoring:**
+```bash
+dtop
+```
+Monitor containers in real-time with keyboard control.
+
+**Scripts and automation:**
+```bash
+# Check container status
+dtop --list
+# or
+dtop -l
+
+# Save to file
+dtop -l > containers.txt
+
+# Pipe to other tools
+dtop -l | grep "myproject"
+
+# CI/CD health check
+if dtop -l | grep -q "Exit"; then
+    echo "Some containers are down!"
+    exit 1
+fi
+```
+
 ## Roadmap
 
+- [x] List mode for non-interactive use (`--list` / `-l`)
 - [ ] Real-time CPU/Memory statistics
 - [ ] Log viewer in split pane
 - [ ] Container inspect view
