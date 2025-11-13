@@ -1,0 +1,40 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+      
+      - name: Build binaries
+        run: |
+          # Linux
+          GOOS=linux GOARCH=amd64 go build -o dtop-linux-amd64
+          GOOS=linux GOARCH=arm64 go build -o dtop-linux-arm64
+          
+          # macOS
+          GOOS=darwin GOARCH=amd64 go build -o dtop-darwin-amd64
+          GOOS=darwin GOARCH=arm64 go build -o dtop-darwin-arm64
+          
+          # Windows
+          GOOS=windows GOARCH=amd64 go build -o dtop-windows-amd64.exe
+      
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            dtop-*
+          generate_release_notes: true
+
