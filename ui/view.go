@@ -8,13 +8,57 @@ import (
 	"github.com/ekinertac/dtop/model"
 )
 
+// renderProgressBar creates a simple progress bar
+func renderProgressBar(percent float64, width int) string {
+	if percent < 0 {
+		percent = 0
+	}
+	if percent > 100 {
+		percent = 100
+	}
+
+	filled := int((percent / 100.0) * float64(width))
+	if filled > width {
+		filled = width
+	}
+
+	bar := strings.Repeat("█", filled) + strings.Repeat("░", width-filled)
+	return bar
+}
+
+// formatNetBytes formats network bytes with units
+func formatNetBytes(bytes uint64) string {
+	const unit = 1024
+	if bytes < unit {
+		return "0"
+	}
+	
+	div := uint64(unit)
+	exp := 0
+	for n := bytes / unit; n >= unit && exp < 4; n /= unit {
+		div *= unit
+		exp++
+	}
+	
+	value := float64(bytes) / float64(div)
+	units := []string{"B", "K", "M", "G", "T"}
+	
+	if value >= 100 {
+		return fmt.Sprintf("%.0f%s", value, units[exp])
+	} else if value >= 10 {
+		return fmt.Sprintf("%.1f%s", value, units[exp])
+	}
+	return fmt.Sprintf("%.1f%s", value, units[exp])
+}
+
 const (
 	// Column widths
-	colNameWidth   = 50
-	colStatusWidth = 30
-	colCPUWidth    = 8
-	colMemWidth    = 8
-	colUptimeWidth = 12
+	colNameWidth   = 40
+	colStatusWidth = 25
+	colCPUWidth    = 12 // Wider for progress bar
+	colMemWidth    = 12 // Wider for progress bar
+	colNetWidth    = 14 // RX/TX column
+	colUptimeWidth = 10
 )
 
 var (
@@ -107,8 +151,9 @@ func (m Model) renderView() string {
 	// Header with fixed column widths
 	header := truncateOrPad("NAME", colNameWidth) + " " +
 		truncateOrPad("STATUS", colStatusWidth) + " " +
-		truncateOrPad("CPU %", colCPUWidth) + " " +
-		truncateOrPad("MEM %", colMemWidth) + " " +
+		truncateOrPad("CPU", colCPUWidth) + " " +
+		truncateOrPad("MEMORY", colMemWidth) + " " +
+		truncateOrPad("NET RX/TX", colNetWidth) + " " +
 		"UPTIME"
 	content.WriteString(headerStyle.Render(header))
 	content.WriteString("\n")
@@ -182,7 +227,7 @@ func (m Model) renderNode(node *model.TreeNode, selected bool) string {
 		fullText := indent + projectName
 		
 		// Pad to full row width for consistent selection highlight
-		totalWidth := colNameWidth + 1 + colStatusWidth + 1 + colCPUWidth + 1 + colMemWidth + 1 + colUptimeWidth
+		totalWidth := colNameWidth + 1 + colStatusWidth + 1 + colCPUWidth + 1 + colMemWidth + 1 + colNetWidth + 1 + colUptimeWidth
 		paddedText := truncateOrPad(fullText, totalWidth)
 		
 		if selected {
@@ -211,20 +256,35 @@ func (m Model) renderNode(node *model.TreeNode, selected bool) string {
 			status = stoppedStyle.Render(statusText)
 		}
 		
-		cpu := truncateOrPad(fmt.Sprintf("%.1f%%", c.CPUPerc), colCPUWidth)
-		mem := truncateOrPad(fmt.Sprintf("%.1f%%", c.MemPerc), colMemWidth)
+		// CPU with progress bar
+		cpuBar := renderProgressBar(c.CPUPerc, 5)
+		cpuText := fmt.Sprintf("%3.0f%% %s", c.CPUPerc, cpuBar)
+		cpu := truncateOrPad(cpuText, colCPUWidth)
+		
+		// Memory with progress bar
+		memBar := renderProgressBar(c.MemPerc, 5)
+		memText := fmt.Sprintf("%3.0f%% %s", c.MemPerc, memBar)
+		mem := truncateOrPad(memText, colMemWidth)
+		
+		// Network RX/TX
+		netRxText := formatNetBytes(c.NetRx)
+		netTxText := formatNetBytes(c.NetTx)
+		netText := fmt.Sprintf("%s/%s", netRxText, netTxText)
+		net := truncateOrPad(netText, colNetWidth)
+		
 		uptime := truncateOrPad(model.FormatUptime(c.CreatedAt), colUptimeWidth)
 
 		// Build the full line
 		if selected {
 			// For selected rows, apply background to entire row using padded columns
-			fullText := name + " " + statusText + " " + cpu + " " + mem + " " + uptime
+			fullText := name + " " + statusText + " " + cpu + " " + mem + " " + net + " " + uptime
 			line = selectedStyle.Render(fullText)
 		} else {
 			// For unselected rows, apply colors per column
 			line = containerStyle.Render(name) + " " + status + " " + 
 				containerStyle.Render(cpu) + " " + 
 				containerStyle.Render(mem) + " " + 
+				containerStyle.Render(net) + " " + 
 				containerStyle.Render(uptime)
 		}
 	}

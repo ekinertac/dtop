@@ -26,6 +26,8 @@ type ContainerInfo struct {
 	CPUPerc   float64
 	MemPerc   float64
 	MemUsage  string
+	NetRx     uint64 // Network bytes received
+	NetTx     uint64 // Network bytes transmitted
 	NetIO     string
 	BlockIO   string
 	CreatedAt time.Time
@@ -66,6 +68,8 @@ func (c *Client) ListContainersWithStats(includeStats bool) ([]ContainerInfo, er
 		cpuPerc  float64
 		memPerc  float64
 		memUsage string
+		netRx    uint64
+		netTx    uint64
 	}
 	statsChan := make(chan statsResult, len(containers))
 
@@ -83,6 +87,8 @@ func (c *Client) ListContainersWithStats(includeStats bool) ([]ContainerInfo, er
 			CPUPerc:   0.0,
 			MemPerc:   0.0,
 			MemUsage:  "N/A",
+			NetRx:     0,
+			NetTx:     0,
 			CreatedAt: time.Unix(ctr.Created, 0),
 			Labels:    ctr.Labels,
 		}
@@ -90,12 +96,14 @@ func (c *Client) ListContainersWithStats(includeStats bool) ([]ContainerInfo, er
 		if ctr.State == "running" && includeStats {
 			runningCount++
 			go func(idx int, containerID string) {
-				cpu, mem, usage := c.getContainerStats(containerID)
+				stats := c.getContainerStats(containerID)
 				statsChan <- statsResult{
 					index:    idx,
-					cpuPerc:  cpu,
-					memPerc:  mem,
-					memUsage: usage,
+					cpuPerc:  stats.cpuPerc,
+					memPerc:  stats.memPerc,
+					memUsage: stats.memUsage,
+					netRx:    stats.netRx,
+					netTx:    stats.netTx,
 				}
 			}(i, ctr.ID)
 		}
@@ -108,6 +116,8 @@ func (c *Client) ListContainersWithStats(includeStats bool) ([]ContainerInfo, er
 			result[stats.index].CPUPerc = stats.cpuPerc
 			result[stats.index].MemPerc = stats.memPerc
 			result[stats.index].MemUsage = stats.memUsage
+			result[stats.index].NetRx = stats.netRx
+			result[stats.index].NetTx = stats.netTx
 		}
 	}
 
@@ -133,40 +143,60 @@ type statsResponse struct {
 		Usage uint64 `json:"usage"`
 		Limit uint64 `json:"limit"`
 	} `json:"memory_stats"`
+	Networks map[string]struct {
+		RxBytes uint64 `json:"rx_bytes"`
+		TxBytes uint64 `json:"tx_bytes"`
+	} `json:"networks"`
 }
 
-func (c *Client) getContainerStats(containerID string) (cpuPerc, memPerc float64, memUsage string) {
+type statsData struct {
+	cpuPerc  float64
+	memPerc  float64
+	memUsage string
+	netRx    uint64
+	netTx    uint64
+}
+
+func (c *Client) getContainerStats(containerID string) statsData {
 	// Get a single stats snapshot (stream=false)
 	stats, err := c.cli.ContainerStats(c.ctx, containerID, false)
 	if err != nil {
-		return 0.0, 0.0, "N/A"
+		return statsData{0.0, 0.0, "N/A", 0, 0}
 	}
 	defer stats.Body.Close()
 
 	// Decode the stats
 	var v statsResponse
 	if err := json.NewDecoder(stats.Body).Decode(&v); err != nil && err != io.EOF {
-		return 0.0, 0.0, "N/A"
+		return statsData{0.0, 0.0, "N/A", 0, 0}
 	}
+
+	result := statsData{}
 
 	// Calculate CPU percentage
 	cpuDelta := float64(v.CPUStats.CPUUsage.TotalUsage - v.PreCPUStats.CPUUsage.TotalUsage)
 	systemDelta := float64(v.CPUStats.SystemUsage - v.PreCPUStats.SystemUsage)
 	onlineCPUs := float64(v.CPUStats.OnlineCPUs)
-
+	
 	if systemDelta > 0.0 && cpuDelta > 0.0 {
-		cpuPerc = (cpuDelta / systemDelta) * onlineCPUs * 100.0
+		result.cpuPerc = (cpuDelta / systemDelta) * onlineCPUs * 100.0
 	}
 
 	// Calculate memory percentage
 	if v.MemoryStats.Limit > 0 {
-		memPerc = (float64(v.MemoryStats.Usage) / float64(v.MemoryStats.Limit)) * 100.0
+		result.memPerc = (float64(v.MemoryStats.Usage) / float64(v.MemoryStats.Limit)) * 100.0
 	}
 
 	// Format memory usage
-	memUsage = formatBytes(v.MemoryStats.Usage) + " / " + formatBytes(v.MemoryStats.Limit)
+	result.memUsage = formatBytes(v.MemoryStats.Usage) + " / " + formatBytes(v.MemoryStats.Limit)
 
-	return cpuPerc, memPerc, memUsage
+	// Calculate network totals across all interfaces
+	for _, net := range v.Networks {
+		result.netRx += net.RxBytes
+		result.netTx += net.TxBytes
+	}
+
+	return result
 }
 
 func formatBytes(bytes uint64) string {

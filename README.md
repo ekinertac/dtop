@@ -15,6 +15,8 @@ A terminal UI tool for monitoring Docker containers, inspired by htop. Displays 
 - **Sticky Footer**: Help text always visible at bottom of screen
 - **Scroll Indicator**: Shows current position when content exceeds screen height
 - **List Mode**: Non-interactive output for scripts and CI/CD pipelines (`--list` / `-l`)
+- **Visual Progress Bars**: CPU and memory usage displayed with inline bar graphs
+- **Network Monitoring**: Real-time network I/O stats (RX/TX) for each container
 
 ## Installation
 
@@ -74,12 +76,12 @@ Example output:
 ```
 dtop - Docker Container Monitor
 
-NAME                                               STATUS                         CPU %    MEM %    UPTIME
-------------------------------------------------------------------------------------------------------------------------
+NAME                                     STATUS                    CPU          MEMORY       NET RX/TX      UPTIME
+----------------------------------------------------------------------------------------------------------------------------------
 ▼ myproject (3)
-    myproject-web-1                                Up 2 hours                     0.0%     0.0%     02h 15m
-    myproject-db-1                                 Up 2 hours (healthy)           0.0%     0.0%     02h 15m
-    myproject-worker-1                             Up 2 hours                     0.0%     0.0%     02h 15m
+    myproject-web-1                      Up 2 hours                 33% ████░    12% █░░░░   1.2M/450K      02h 15m
+    myproject-db-1                       Up 2 hours (healthy)        8% █░░░░     5% ░░░░░   621B/566B      02h 15m
+    myproject-worker-1                   Up 2 hours                  2% ░░░░░     3% ░░░░░   1.4K/890B      02h 15m
 ```
 
 ## Keyboard Shortcuts
@@ -201,7 +203,8 @@ fi
 ## Roadmap
 
 - [x] List mode for non-interactive use (`--list` / `-l`)
-- [x] Real-time CPU/Memory statistics
+- [x] Real-time CPU/Memory statistics with progress bars
+- [x] Network I/O monitoring (RX/TX per container)
 - [x] Log viewer with scrolling
 - [ ] Container inspect view
 - [ ] Exec into container

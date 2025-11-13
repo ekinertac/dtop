@@ -14,10 +14,10 @@ func PrintSnapshot(tree *model.Tree) {
 	fmt.Println()
 
 	// Header
-	header := fmt.Sprintf("%-50s %-30s %-8s %-8s %s",
-		"NAME", "STATUS", "CPU %", "MEM %", "UPTIME")
+	header := fmt.Sprintf("%-40s %-25s %-12s %-12s %-14s %s",
+		"NAME", "STATUS", "CPU", "MEMORY", "NET RX/TX", "UPTIME")
 	fmt.Println(header)
-	fmt.Println(strings.Repeat("-", 120))
+	fmt.Println(strings.Repeat("-", 130))
 
 	if tree == nil || len(tree.Flat) == 0 {
 		fmt.Println("No containers found")
@@ -49,13 +49,28 @@ func printNode(tree *model.Tree, node *model.TreeNode) {
 		}
 
 		c := node.Container
-		name := truncateOrPadPlain(indent+"  "+c.Name, 50)
-		status := truncateOrPadPlain(c.Status, 30)
-		cpu := fmt.Sprintf("%-8s", fmt.Sprintf("%.1f%%", c.CPUPerc))
-		mem := fmt.Sprintf("%-8s", fmt.Sprintf("%.1f%%", c.MemPerc))
+		name := truncateOrPadPlain(indent+"  "+c.Name, 40)
+		status := truncateOrPadPlain(c.Status, 25)
+		
+		// CPU with bar
+		cpuBar := renderProgressBarPlain(c.CPUPerc, 5)
+		cpuText := fmt.Sprintf("%3.0f%% %s", c.CPUPerc, cpuBar)
+		cpu := truncateOrPadPlain(cpuText, 12)
+		
+		// Memory with bar
+		memBar := renderProgressBarPlain(c.MemPerc, 5)
+		memText := fmt.Sprintf("%3.0f%% %s", c.MemPerc, memBar)
+		mem := truncateOrPadPlain(memText, 12)
+		
+		// Network
+		netRx := formatNetBytesPlain(c.NetRx)
+		netTx := formatNetBytesPlain(c.NetTx)
+		netText := fmt.Sprintf("%s/%s", netRx, netTx)
+		net := truncateOrPadPlain(netText, 14)
+		
 		uptime := model.FormatUptime(c.CreatedAt)
 
-		fmt.Printf("%s %s %s %s %s\n", name, status, cpu, mem, uptime)
+		fmt.Printf("%s %s %s %s %s %s\n", name, status, cpu, mem, net, uptime)
 	}
 }
 
@@ -66,5 +81,48 @@ func truncateOrPadPlain(s string, width int) string {
 		return string(runes[:width-3]) + "..."
 	}
 	return s + strings.Repeat(" ", width-len(runes))
+}
+
+// renderProgressBarPlain creates a simple progress bar (plain text)
+func renderProgressBarPlain(percent float64, width int) string {
+	if percent < 0 {
+		percent = 0
+	}
+	if percent > 100 {
+		percent = 100
+	}
+
+	filled := int((percent / 100.0) * float64(width))
+	if filled > width {
+		filled = width
+	}
+
+	bar := strings.Repeat("█", filled) + strings.Repeat("░", width-filled)
+	return bar
+}
+
+// formatNetBytesPlain formats network bytes with units
+func formatNetBytesPlain(bytes uint64) string {
+	const unit = 1024
+	if bytes < unit {
+		return "0"
+	}
+	
+	div := uint64(unit)
+	exp := 0
+	for n := bytes / unit; n >= unit && exp < 4; n /= unit {
+		div *= unit
+		exp++
+	}
+	
+	value := float64(bytes) / float64(div)
+	units := []string{"B", "K", "M", "G", "T"}
+	
+	if value >= 100 {
+		return fmt.Sprintf("%.0f%s", value, units[exp])
+	} else if value >= 10 {
+		return fmt.Sprintf("%.1f%s", value, units[exp])
+	}
+	return fmt.Sprintf("%.1f%s", value, units[exp])
 }
 
