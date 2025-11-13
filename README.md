@@ -21,7 +21,19 @@ A terminal UI tool for monitoring Docker containers, inspired by htop. Displays 
 go install github.com/ekinertac/dtop@latest
 ```
 
-This installs `dtop` to your `$GOPATH/bin` (usually `~/go/bin`). Make sure this directory is in your PATH.
+This installs `dtop` to your `$GOPATH/bin` directory (usually `~/go/bin`). 
+
+**If the command is not found after installation**, add Go's bin directory to your PATH:
+
+```bash
+# For bash/zsh, add to ~/.bashrc or ~/.zshrc
+export PATH="$PATH:$(go env GOPATH)/bin"
+
+# Or if go command is not available, typically it's:
+export PATH="$PATH:$HOME/go/bin"
+```
+
+After adding the export line, restart your terminal or run `source ~/.bashrc` (or `~/.zshrc`).
 
 ### From source
 
